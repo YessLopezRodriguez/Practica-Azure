@@ -1,47 +1,48 @@
-const { CosmosClient } = require("@azure/cosmos");
-const endpoint = "https://localhost:8081";
-const key = "C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMsEcaGQy67XIw/Jw==";
+require('dotenv').config();
+const { CosmosClient } = require('@azure/cosmos');
+const axios = require('axios');
+
+const endpoint = process.env.COSMOS_DB_ENDPOINT;
+const key = process.env.COSMOS_DB_KEY;
+const databaseId = process.env.COSMOS_DB_DATABASE_ID;
+const containerId = process.env.COSMOS_DB_CONTAINER_ID;
+const eventGridTopicEndpoint = process.env.EVENT_GRID_TOPIC_ENDPOINT;
+const eventGridTopicKey = process.env.EVENT_GRID_TOPIC_KEY;
+
 const client = new CosmosClient({ endpoint, key });
-const databaseId = "TaskDB";
-const tasksContainerId = "Tasks";
-const eventsContainerId = "Events";
-const { EventGridPublisherClient, AzureKeyCredential } = require("@azure/eventgrid");
-const eventGridEndpoint = process.env.EVENT_GRID_ENDPOINT;
-const eventGridKey = process.env.EVENT_GRID_KEY;
-const publisher = new EventGridPublisherClient(eventGridEndpoint, new AzureKeyCredential(eventGridKey));
-
-
 module.exports = async function (context, req) {
-    const newTask = req.body;
-    const event = {
-        entityId: newTask.id,
-        eventType: "TaskCreated",
-        data: newTask,
-        timestamp: new Date().toISOString()
-    };
+    const { id, title, description } = req.body;
+
+    if (!id || !title || !description) {
+        context.res = {
+            status: 400,
+            body: "Please provide id, title, and description."
+        };
+        return;
+    }
     const { database } = await client.databases.createIfNotExists({ id: databaseId });
-    const { container: eventsContainer } = await database.containers.createIfNotExists({ id: eventsContainerId });
-    const { container: tasksContainer } = await database.containers.createIfNotExists({ id: tasksContainerId });
-    // Guardar el evento
-    await eventsContainer.items.create(event);
+    const { container } = await database.containers.createIfNotExists({ id: databaseId });
+    const { resource: createdTask } = await container.items.create({ id, title, description });
+
+    // Publicar evento en Event Grid
+    const event = {
+        id: id,
+        subject: `New task created: ${id}`,
+        data: createdTask,
+        eventType: "TaskCreated",
+        eventTime: new Date(),
+        dataVersion: "1.0"
+    };
     
-    // Actualizar el estado actual
-    await tasksContainer.items.upsert(newTask);
+    await axios.post(eventGridTopicEndpoint, [event], {
+        headers: {
+            "aeg-sas-key": eventGridTopicKey,
+            "Content-Type": "application/json"
+        }
+    });
     context.res = {
         status: 201,
-        body: newTask
+        body: createdTask
     };
-    await publishEvent(event, context.res);
 };
 
-async function publishEvent(eventType, data) {
-    await publisher.send([
-        {
-            eventType: eventType,
-            subject: `tasks/${data.id}`,
-            dataVersion: "1.0",
-            data: data,
-            eventTime: new Date()
-        }
-    ]);
-}
