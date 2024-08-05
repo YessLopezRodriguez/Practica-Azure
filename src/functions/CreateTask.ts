@@ -16,7 +16,9 @@ const client = new CosmosClient({ endpoint, key });
 
 export async function CreateTask(req: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
     
-    const { id, title, description, sagaId }: any = req.body;
+    
+    const { id, title, description, sagaId }: any = await req.json();
+    context.log("Debería pasar");
     if (!id || !title || !description || !sagaId) {
         
         return {
@@ -24,7 +26,7 @@ export async function CreateTask(req: HttpRequest, context: InvocationContext): 
             body: "Please provide id, title, description, and sagaId."
         };
     }
-
+context.log("pasó");
     const { database } = await client.databases.createIfNotExists({ id: databaseId });
     const { container } = await database.containers.createIfNotExists({ id: containerId });
 
