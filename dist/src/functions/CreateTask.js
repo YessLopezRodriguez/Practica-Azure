@@ -24,15 +24,15 @@ const containerId = process.env.COSMOS_DB_CONTAINER_ID;
 const client = new cosmos_1.CosmosClient({ endpoint, key });
 function CreateTask(req, context) {
     return __awaiter(this, void 0, void 0, function* () {
-        console.log(req);
-        console.log('111');
-        const { id, title, description, sagaId } = req.body;
+        const { id, title, description, sagaId } = yield req.json();
+        context.log("Debería pasar");
         if (!id || !title || !description || !sagaId) {
             return {
                 status: 400,
                 body: "Please provide id, title, description, and sagaId."
             };
         }
+        context.log("pasó");
         const { database } = yield client.databases.createIfNotExists({ id: databaseId });
         const { container } = yield database.containers.createIfNotExists({ id: containerId });
         try {
